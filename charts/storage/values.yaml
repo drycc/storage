@@ -74,6 +74,8 @@ mainnode:
       storageClass: ""
   weed:
     replicas: 3
+    # threshold to vacuum and reclaim spaces
+    garbageThreshold: 0.3
     # Storage replication type is XYZ:
     # X number of replica in other data centers
     # Y number of replica in other racks in the same data center
