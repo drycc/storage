@@ -170,6 +170,7 @@ datanode:
         enabled: false
         size: 5Gi
         storageClass: ""
+    compactionMBps: 100
 
 # Service
 service:

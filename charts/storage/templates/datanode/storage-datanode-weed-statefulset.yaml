@@ -65,6 +65,7 @@ spec:
             -rack=${RACK} \
             -dataCenter=${DATA_CENTER} \
             -mserver={{ include "mainnode.weedUrls" . }} \
+            -compactionMBps={{ .Values.datanode.weed.compactionMBps }} \
             -dir=/data/data \
             -dir.idx=/data/meta
         env:
