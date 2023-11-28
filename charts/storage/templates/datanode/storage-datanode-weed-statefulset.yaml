@@ -56,6 +56,7 @@ spec:
           KUBERNETES_API_URL="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/api/v1/nodes/${NODE_NAME}"
           RACK=$(curl -sSL --cacert ${CACERT} --header "${HEADER}" -X GET "${KUBERNETES_API_URL}" | jq -r .metadata.labels.[\"topology.kubernetes.io/rack\"])
           DATA_CENTER=$(curl -sSL --cacert ${CACERT} --header "${HEADER}" -X GET "${KUBERNETES_API_URL}" | jq -r .metadata.labels.[\"topology.kubernetes.io/zone\"])
+          mkdir -p /data/{meta,data}
           boot datanode weed \
             -port=8080 \
             -port.grpc=18080 \
@@ -64,16 +65,8 @@ spec:
             -rack=${RACK} \
             -dataCenter=${DATA_CENTER} \
             -mserver={{ include "mainnode.weedUrls" . }} \
-            {{- if and (.Values.datanode.weed.persistence.hdd.enabled) (.Values.datanode.weed.persistence.ssd.enabled) }}
-            -disk=hdd,ssd \
-            -dir=/data/hdd,/data/ssd
-            {{- else if .Values.datanode.weed.persistence.ssd.enabled }}
-            -dir=/data/ssd
-            {{- else if .Values.datanode.weed.persistence.hdd.enabled }}
-            -dir=/data/hdd
-            {{- else }}
-            -dir=/data
-            {{- end }}
+            -dir=/data/data \
+            -dir.idx=/data/meta
         env:
         - name: TZ
           value: UTC
@@ -113,13 +106,13 @@ spec:
         volumeMounts:
         - name: storage-config
           mountPath: /etc/seaweedfs
-        {{- if .Values.datanode.weed.persistence.hdd.enabled }}
-        - name: storage-datanode-weed-hdd
-          mountPath: /data/hdd
+        {{- if .Values.datanode.weed.persistence.data.enabled }}
+        - name: storage-datanode-weed-data
+          mountPath: /data/data
         {{- end }}
-        {{- if .Values.datanode.weed.persistence.ssd.enabled }}
-        - name: storage-datanode-weed-ssd
-          mountPath: /data/ssd
+        {{- if .Values.datanode.weed.persistence.meta.enabled }}
+        - name: storage-datanode-weed-meta
+          mountPath: /data/meta
         {{- end }}
       volumes:
       - name: storage-config
@@ -129,39 +122,39 @@ spec:
         fsGroup: 1001
         runAsGroup: 1001
         runAsUser: 1001
-  {{- if or (.Values.datanode.weed.persistence.hdd.enabled) (.Values.datanode.weed.persistence.ssd.enabled) }}
+  {{- if or (.Values.datanode.weed.persistence.data.enabled) (.Values.datanode.weed.persistence.meta.enabled) }}
   volumeClaimTemplates:
-  {{- if .Values.datanode.weed.persistence.hdd.enabled }}
+  {{- if .Values.datanode.weed.persistence.data.enabled }}
   - metadata:
-      name: storage-datanode-weed-hdd
+      name: storage-datanode-weed-data
     spec:
       accessModes: [ "ReadWriteOnce" ]
-      {{- if .Values.datanode.weed.persistence.hdd.storageClass }}
-      {{- if (eq "-" .Values.datanode.weed.persistence.hdd.storageClass) }}
+      {{- if .Values.datanode.weed.persistence.data.storageClass }}
+      {{- if (eq "-" .Values.datanode.weed.persistence.data.storageClass) }}
       storageClassName: ""
       {{- else }}
-      storageClassName: "{{ .Values.datanode.weed.persistence.hdd.storageClass }}"
+      storageClassName: "{{ .Values.datanode.weed.persistence.data.storageClass }}"
       {{- end }}
       {{- end }}
       resources:
         requests:
-          storage: {{ .Values.datanode.weed.persistence.hdd.size | quote }}
+          storage: {{ .Values.datanode.weed.persistence.data.size | quote }}
   {{- end }}
-  {{- if .Values.datanode.weed.persistence.ssd.enabled }}
+  {{- if .Values.datanode.weed.persistence.meta.enabled }}
   - metadata:
-      name: storage-datanode-weed-ssd
+      name: storage-datanode-weed-meta
     spec:
       accessModes: [ "ReadWriteOnce" ]
-      {{- if .Values.datanode.weed.persistence.ssd.storageClass }}
-      {{- if (eq "-" .Values.datanode.weed.persistence.ssd.storageClass) }}
+      {{- if .Values.datanode.weed.persistence.meta.storageClass }}
+      {{- if (eq "-" .Values.datanode.weed.persistence.meta.storageClass) }}
       storageClassName: ""
       {{- else }}
-      storageClassName: "{{ .Values.datanode.weed.persistence.ssd.storageClass }}"
+      storageClassName: "{{ .Values.datanode.weed.persistence.meta.storageClass }}"
       {{- end }}
       {{- end }}
       resources:
         requests:
-          storage: {{ .Values.datanode.weed.persistence.ssd.size | quote }}
+          storage: {{ .Values.datanode.weed.persistence.meta.size | quote }}
   {{- end }}
   {{- end }}
 {{- end }}

@@ -162,11 +162,11 @@ datanode:
         app: "drycc-storage-datanode-weed"
     # persistence config
     persistence:
-      ssd:
+      meta:
         enabled: false
         size: 5Gi
         storageClass: ""
-      hdd:
+      data:
         enabled: false
         size: 5Gi
         storageClass: ""
