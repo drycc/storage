@@ -38,6 +38,50 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
       containers:
+      - name: drycc-storage-csi-controller-plugin
+        image: {{ .Values.imageRegistry }}/{{ .Values.imageOrg }}/storage:{{ .Values.imageTag }}
+        imagePullPolicy: {{ .Values.imagePullPolicy }}
+        {{- if .Values.diagnosticMode.enabled }}
+        command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 10 }}
+        args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 10 }}
+        {{- else }}
+        args:
+        - controls
+        - csi
+        - seaweedfs
+        - --endpoint=unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+        - --seaweedfs-filer=drycc-storage-metanode-weed.$(NAMESPACE).svc.{{ $clusterDomain }}:8888
+        - --node-id=$(NODE_NAME)
+        - --driver-name={{ .Values.csi.driverName }}
+        - --components=controller
+        - --health-port=9808
+        {{- end }}
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - containerPort: 9808
+          name: healthz
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          failureThreshold: 2
+          initialDelaySeconds: 10
+          timeoutSeconds: 3
+          periodSeconds: 60
+        volumeMounts:
+        - name: socket-dir
+          mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: storage-config
+          mountPath: /etc/seaweedfs
       - name: drycc-storage-csi-controller-provisioner
         image: {{ .Values.csi.statefulset.provisionerImage }}
         {{- if .Values.diagnosticMode.enabled }}
@@ -95,50 +139,6 @@ spec:
         volumeMounts:
         - name: socket-dir
           mountPath: /var/lib/csi/sockets/pluginproxy/
-      - name: drycc-storage-csi-controller-plugin
-        image: {{ .Values.imageRegistry }}/{{ .Values.imageOrg }}/storage:{{ .Values.imageTag }}
-        imagePullPolicy: {{ .Values.imagePullPolicy }}
-        {{- if .Values.diagnosticMode.enabled }}
-        command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 10 }}
-        args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 10 }}
-        {{- else }}
-        args:
-        - controls
-        - csi
-        - seaweedfs
-        - --endpoint=unix:///var/lib/csi/sockets/pluginproxy/csi.sock
-        - --seaweedfs-filer=drycc-storage-metanode-weed.$(NAMESPACE).svc.{{ $clusterDomain }}:8888
-        - --node-id=$(NODE_NAME)
-        - --driver-name={{ .Values.csi.driverName }}
-        - --components=controller
-        - --health-port=9808
-        {{- end }}
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        ports:
-        - containerPort: 9808
-          name: healthz
-          protocol: TCP
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: healthz
-          failureThreshold: 2
-          initialDelaySeconds: 10
-          timeoutSeconds: 3
-          periodSeconds: 60
-        volumeMounts:
-        - name: socket-dir
-          mountPath: /var/lib/csi/sockets/pluginproxy/
-        - name: storage-config
-          mountPath: /etc/seaweedfs
       volumes:
       - name: socket-dir
         emptyDir: {}
