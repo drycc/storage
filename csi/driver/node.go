@@ -18,11 +18,14 @@ package driver
 
 import (
 	"regexp"
+	"time"
 
 	"github.com/drycc/storage/csi/k8s"
 	"github.com/drycc/storage/csi/provider"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
+	"k8s.io/klog/v2"
+	"k8s.io/mount-utils"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -30,12 +33,14 @@ import (
 )
 
 const (
-	optionsKey = "options"
+	optionsKey          = "options"
+	defaultCheckTimeout = 2 * time.Second
 )
 
 var (
 	nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 	}
 )
 
@@ -152,4 +157,60 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodeExpandVolumeResponse{}, nil
+}
+
+func (d *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	log := klog.NewKlogr().WithName("NodeGetVolumeStats")
+	log.V(1).Info("called with args", "args", req)
+
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
+	}
+
+	volumePath := req.GetVolumePath()
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume path not provided")
+	}
+
+	var exists bool
+
+	err := doWithTimeout(ctx, defaultCheckTimeout, func() (err error) {
+		exists, err = mount.PathExists(volumePath)
+		return
+	})
+	if err == nil {
+		if !exists {
+			log.Info("Volume path not exists", "volumePath", volumePath)
+			return nil, status.Error(codes.NotFound, "Volume path not exists")
+		}
+		if err := d.provider.NodeWaitMountVolume(volumePath, defaultCheckTimeout); err != nil {
+			log.Info("Check volume path is mountpoint failed", "volumePath", volumePath, "error", err)
+			return nil, status.Errorf(codes.Internal, "Check volume path is mountpoint failed: %s", err)
+		}
+	} else {
+		log.Info("Check volume path %s, err: %s", "volumePath", volumePath, "error", err)
+		return nil, status.Errorf(codes.Internal, "Check volume path, err: %s", err)
+	}
+
+	totalSize, freeSize, totalInodes, freeInodes := getDiskUsage(volumePath)
+	usedSize := int64(totalSize) - int64(freeSize)
+	usedInodes := int64(totalInodes) - int64(freeInodes)
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Available: int64(freeSize),
+				Total:     int64(totalSize),
+				Used:      usedSize,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+			{
+				Available: int64(freeInodes),
+				Total:     int64(totalInodes),
+				Used:      usedInodes,
+				Unit:      csi.VolumeUsage_INODES,
+			},
+		},
+	}, nil
 }
