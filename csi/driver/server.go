@@ -17,41 +17,12 @@ limitations under the License.
 package driver
 
 import (
-	"fmt"
-	"net"
-	"os"
-	"strings"
 	"sync"
 
-	"github.com/golang/glog"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
+	"github.com/golang/glog"
+	"google.golang.org/grpc"
 )
-
-func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	glog.V(3).Infof("grpc call: %s", info.FullMethod)
-	glog.V(5).Infof("grpc request: %s", protosanitizer.StripSecrets(req))
-	resp, err := handler(ctx, req)
-	if err != nil {
-		glog.Errorf("grpc call %s requests %s error: %v", info.FullMethod, protosanitizer.StripSecrets(req), err)
-	} else {
-		glog.V(5).Infof("grpc response: %s", protosanitizer.StripSecrets(resp))
-	}
-	return resp, err
-}
-
-func ParseEndpoint(ep string) (string, string, error) {
-	if strings.HasPrefix(strings.ToLower(ep), "unix://") || strings.HasPrefix(strings.ToLower(ep), "tcp://") {
-		s := strings.SplitN(ep, "://", 2)
-		if s[1] != "" {
-			return s[0], s[1], nil
-		}
-	}
-	return "", "", fmt.Errorf("invalid endpoint: %v", ep)
-}
 
 // Defines Non blocking GRPC server interfaces
 type NonBlockingGRPCServer interface {
@@ -96,29 +67,8 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
 
-	proto, addr, err := ParseEndpoint(endpoint)
-	if err != nil {
-		glog.Fatal(err.Error())
-	}
-
-	if proto == "unix" {
-		addr = "/" + addr
-		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
-			glog.Fatalf("failed to remove %s, error: %s", addr, err.Error())
-		}
-	}
-
-	listener, err := net.Listen(proto, addr)
-	if err != nil {
-		glog.Fatalf("failed to listen: %v", err)
-	}
-
-	opts := []grpc.ServerOption{
-		grpc.UnaryInterceptor(logGRPC),
-	}
-	server := grpc.NewServer(opts...)
+	listener, server := NewGrpcServer(endpoint)
 	s.server = server
-
 	if ids != nil {
 		csi.RegisterIdentityServer(server, ids)
 	}

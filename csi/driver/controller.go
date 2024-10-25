@@ -21,12 +21,10 @@ import (
 	"path"
 
 	"github.com/drycc/storage/csi/client"
-	"github.com/drycc/storage/csi/provider"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog/v2"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
@@ -39,19 +37,17 @@ const (
 var (
 	controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
-		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 	}
 )
 
 type ControllerServer struct {
 	csi.UnimplementedControllerServer
-	provider provider.Provider
-	driver   *CSIDriver
+	driver     *CSIDriver
+	driverInfo *DriverInfo
 }
 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	glog.V(5).Infof("using CreateVolume: %#v, %#v", ctx, req)
+	glog.Infof("using CreateVolume: %#v, %#v", ctx, req)
 	params := req.GetParameters()
 	capacityBytes := int64(req.GetCapacityRange().GetRequiredBytes())
 	volumeID := sanitizeVolumeID(req.GetName())
@@ -66,7 +62,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	if err := cs.driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("invalid create volume req: %v", req)
+		glog.Infof("invalid create volume req: %v", req)
 		return nil, err
 	}
 
@@ -78,7 +74,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "volume Capabilities missing in request")
 	}
 
-	glog.V(4).Infof("got a request to create volume %s", volumeID)
+	glog.Infof("got a request to create volume %s", volumeID)
 	client, err := client.NewClientFromSecret(req.GetSecrets())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize S3 client: %s", err)
@@ -99,7 +95,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, fmt.Errorf("failed to create prefix %s: %v", prefix, err)
 	}
 
-	glog.V(4).Infof("create volume %s", volumeID)
+	glog.Infof("create volume %s", volumeID)
 	// DeleteVolume lacks VolumeContext, but publish&unpublish requests have it,
 	// so we don't need to store additional metadata anywhere
 	context := make(map[string]string)
@@ -116,7 +112,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	glog.V(5).Infof("using DeleteVolume: %#v, %#v", ctx, req)
+	glog.Infof("using DeleteVolume: %#v, %#v", ctx, req)
 	volumeID := req.GetVolumeId()
 	bucketName, prefix := volumeIDToBucketPrefix(volumeID)
 
@@ -126,10 +122,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	if err := cs.driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("invalid delete volume req: %v", req)
+		glog.Infof("invalid delete volume req: %v", req)
 		return nil, err
 	}
-	glog.V(4).Infof("deleting volume %s", volumeID)
+	glog.Infof("deleting volume %s", volumeID)
 
 	client, err := client.NewClientFromSecret(req.GetSecrets())
 	if err != nil {
@@ -142,12 +138,12 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		if err := client.RemoveBucket(bucketName); err != nil && err.Error() != "The specified bucket does not exist" {
 			deleteErr = err
 		}
-		glog.V(4).Infof("bucket %s removed", bucketName)
+		glog.Infof("bucket %s removed", bucketName)
 	} else {
 		if err := client.RemovePrefix(bucketName, prefix); err != nil {
 			deleteErr = fmt.Errorf("unable to remove prefix: %w", err)
 		}
-		glog.V(4).Infof("prefix %s removed", prefix)
+		glog.Infof("prefix %s removed", prefix)
 	}
 
 	if deleteErr != nil {
@@ -158,7 +154,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 }
 
 func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	glog.V(5).Infof("using ValidateVolumeCapabilities: %#v, %#v", ctx, req)
+	glog.Infof("using ValidateVolumeCapabilities: %#v, %#v", ctx, req)
 	// Check arguments
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
@@ -205,7 +201,7 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 }
 
 func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	klog.V(6).Infof("ControllerGetCapabilities: %#v, %#v", ctx, req)
+	glog.Infof("ControllerGetCapabilities: %#v, %#v", ctx, req)
 	var caps []*csi.ControllerServiceCapability
 	for _, cap := range controllerCaps {
 		c := &csi.ControllerServiceCapability{
@@ -218,25 +214,4 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 		caps = append(caps, c)
 	}
 	return &csi.ControllerGetCapabilitiesResponse{Capabilities: caps}, nil
-}
-
-// ControllerExpandVolume
-func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	glog.V(5).Infof("using ControllerExpandVolume: %#v, %#v", ctx, req)
-	volSizeBytes := req.GetCapacityRange().GetRequiredBytes()
-	volumeID := req.GetVolumeId()
-	bucket, prefix := volumeIDToBucketPrefix(volumeID)
-	mountBucket := &provider.MountBucket{Name: bucket, Prefix: prefix, Capacity: uint64(volSizeBytes), Secrets: req.GetSecrets()}
-	if err := cs.provider.ControllerExpandVolume(mountBucket); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	return &csi.ControllerExpandVolumeResponse{CapacityBytes: volSizeBytes, NodeExpansionRequired: false}, nil
-}
-
-// GetCapacity
-func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	glog.V(5).Infof("using GetCapacity: %#v, %#v", ctx, req)
-	return &csi.GetCapacityResponse{
-		AvailableCapacity: maxAvailableCapacity,
-	}, nil
 }

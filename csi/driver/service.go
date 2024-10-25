@@ -4,25 +4,37 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/drycc/storage/csi/provider"
 	"github.com/golang/glog"
 )
 
+type MounterInfo struct {
+	Name     *string
+	Exefile  *string
+	Timeout  *time.Duration
+	Endpoint *string
+	// pod used
+	NodeId          *string
+	Namespace       *string
+	Image           *string
+	ImagePullPolicy *string
+	ServiceAccount  *string
+}
+
 type DriverInfo struct {
-	NodeID      string
-	DriverName  string
-	Endpoint    string
-	Components  string
-	Version     string
-	SavepointDB string
-	HealthPort  int
+	NodeId      *string
+	DriverName  *string
+	Endpoint    *string
+	Components  *string
+	Version     *string
+	HealthPort  *int
+	MounterInfo *MounterInfo
 }
 
 type DriveService struct {
 	driver     *CSIDriver
-	provider   provider.Provider
 	driverInfo *DriverInfo
 
 	ids *IdentityServer
@@ -31,13 +43,13 @@ type DriveService struct {
 }
 
 // New initializes the driver
-func New(driverInfo *DriverInfo, provider provider.Provider) (*DriveService, error) {
-	d := NewCSIDriver(driverInfo.DriverName, driverInfo.Version, driverInfo.NodeID)
+func New(driverInfo *DriverInfo) (*DriveService, error) {
+	d := NewCSIDriver(*driverInfo.DriverName, *driverInfo.Version, *driverInfo.NodeId)
 	if d == nil {
 		glog.Fatalln("failed to initialize CSI Driver.")
 	}
-	service := &DriveService{driver: d, provider: provider, driverInfo: driverInfo}
-	if err := service.initComponents(d); err != nil {
+	service := &DriveService{driver: d, driverInfo: driverInfo}
+	if err := service.initComponents(); err != nil {
 		return nil, err
 	}
 	return service, nil
@@ -54,14 +66,14 @@ func (service *DriveService) startHealthz(port int) {
 	}()
 }
 
-func (service *DriveService) initComponents(driver *CSIDriver) error {
-	service.ids = &IdentityServer{driver: driver}
-	for _, component := range strings.Split(service.driverInfo.Components, ",") {
+func (service *DriveService) initComponents() error {
+	service.ids = &IdentityServer{driver: service.driver}
+	for _, component := range strings.Split(*service.driverInfo.Components, ",") {
 		switch component {
 		case "node":
-			service.ns = &NodeServer{provider: service.provider, driver: driver}
+			service.ns = &NodeServer{driver: service.driver, driverInfo: service.driverInfo}
 		case "controller":
-			service.cs = &ControllerServer{provider: service.provider, driver: driver}
+			service.cs = &ControllerServer{driver: service.driver, driverInfo: service.driverInfo}
 		default:
 			return fmt.Errorf("unknown component: %s", component)
 		}
@@ -72,7 +84,7 @@ func (service *DriveService) initComponents(driver *CSIDriver) error {
 func (service *DriveService) Serve() {
 	glog.Infof("driver: %v ", service.driver.name)
 	glog.Infof("version: %v ", service.driver.version)
-	glog.Infof("components: %v ", service.driverInfo.Components)
+	glog.Infof("components: %v ", *service.driverInfo.Components)
 
 	// Initialize default library driver
 	service.driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME})
@@ -80,7 +92,7 @@ func (service *DriveService) Serve() {
 
 	// Create GRPC servers
 	s := NewNonBlockingGRPCServer()
-	s.Start(service.driverInfo.Endpoint, service.ids, service.cs, service.ns)
-	service.startHealthz(service.driverInfo.HealthPort)
+	s.Start(*service.driverInfo.Endpoint, service.ids, service.cs, service.ns)
+	service.startHealthz(*service.driverInfo.HealthPort)
 	s.Wait()
 }

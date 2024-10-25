@@ -4,13 +4,17 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"net"
+	"os"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/golang/glog"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"golang.org/x/net/context"
-	"k8s.io/klog/v2"
+	"google.golang.org/grpc"
 )
 
 func sanitizeVolumeID(volumeID string) string {
@@ -36,22 +40,6 @@ func volumeIDToBucketPrefix(volumeID string) (string, string) {
 	return volumeID, ""
 }
 
-func getDiskUsage(path string) (uint64, uint64, uint64, uint64) {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err == nil {
-		// in bytes
-		blockSize := uint64(stat.Bsize)
-		totalSize := blockSize * stat.Blocks
-		freeSize := blockSize * stat.Bfree
-		totalFiles := stat.Files
-		freeFiles := stat.Ffree
-		return totalSize, freeSize, totalFiles, freeFiles
-	} else {
-		klog.Errorf("Check volume path %s, err: %s", path, err)
-		return 1, 1, 1, 1
-	}
-}
-
 func doWithTimeout(parent context.Context, timeout time.Duration, f func() error) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -69,4 +57,54 @@ func doWithTimeout(parent context.Context, timeout time.Duration, f func() error
 	case err := <-doneCh:
 		return err
 	}
+}
+
+func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	glog.Infof("grpc call: %s", info.FullMethod)
+	glog.Infof("grpc request: %s", protosanitizer.StripSecrets(req))
+	resp, err := handler(ctx, req)
+	if err != nil {
+		glog.Errorf("grpc call %s requests %s error: %v", info.FullMethod, protosanitizer.StripSecrets(req), err)
+	} else {
+		glog.Infof("grpc response: %s", protosanitizer.StripSecrets(resp))
+	}
+	return resp, err
+}
+
+func ParseEndpoint(ep string) (string, string, error) {
+	if strings.HasPrefix(strings.ToLower(ep), "unix://") || strings.HasPrefix(strings.ToLower(ep), "tcp://") {
+		s := strings.SplitN(ep, "://", 2)
+		if s[1] != "" {
+			if s[0] == "unix" {
+				if !strings.HasPrefix(s[1], "/") {
+					s[1] = "/" + s[1]
+				}
+			}
+			return s[0], s[1], nil
+		}
+	}
+	return "", "", fmt.Errorf("invalid endpoint: %v", ep)
+}
+
+func NewGrpcServer(endpoint string) (net.Listener, *grpc.Server) {
+	proto, addr, err := ParseEndpoint(endpoint)
+	if err != nil {
+		glog.Fatal(err.Error())
+	}
+
+	if proto == "unix" {
+		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
+			glog.Fatalf("failed to remove %s, error: %s", addr, err.Error())
+		}
+	}
+
+	listener, err := net.Listen(proto, addr)
+	if err != nil {
+		glog.Fatalf("failed to listen: %v", err)
+	}
+
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(logGRPC),
+	}
+	return listener, grpc.NewServer(opts...)
 }
