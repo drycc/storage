@@ -76,16 +76,19 @@ spec:
         command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 10 }}
         args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 10 }}
         {{- else }}
-        args :
-        - controls
-        - csi
-        - seaweedfs
-        - --endpoint=unix:///csi/csi.sock
-        - --seaweedfs-filer=drycc-storage-metanode-weed.$(NAMESPACE).svc.{{ $clusterDomain }}:8888
+        args:
+        - csi-driver
         - --node-id=$(NODE_NAME)
-        - --driver-name={{ .Values.csi.driverName }}
+        - --endpoint=unix:///csi/csi.sock
         - --components=node
+        - --driver-name={{ .Values.csi.driverName }}
         - --health-port=9808
+        - --mounter=seaweedfs
+        - --mounter-endpoint=drycc-storage-metanode-weed.$(NAMESPACE).svc.{{ $clusterDomain }}:8888
+        - --mounter-image={{ .Values.imageRegistry }}/{{ .Values.imageOrg }}/storage:{{ .Values.imageTag }}
+        - --mounter-image-pull-policy={{ .Values.imagePullPolicy }}
+        - --mounter-namespace=$(NAMESPACE)
+        - --mounter-service-account=drycc-storage-csi
         {{- end }}
         env:
         - name: NODE_NAME
@@ -96,10 +99,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: DATA_CENTER
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.labels['topology.kubernetes.io/zone']
         ports:
         - containerPort: 9808
           name: healthz

@@ -36,7 +36,9 @@ csi:
       options: "--chunkSizeLimitMB=10 --concurrentWriters=16"
   daemonset:
     updateStrategy:
-      type: OnDelete
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
     registrarImage: registry.drycc.cc/k8s/sig-storage/csi-node-driver-registrar:v2.10.0
   statefulset:
     replicas: 1

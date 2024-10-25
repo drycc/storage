@@ -46,15 +46,18 @@ spec:
         args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 10 }}
         {{- else }}
         args:
-        - controls
-        - csi
-        - seaweedfs
-        - --endpoint=unix:///var/lib/csi/sockets/pluginproxy/csi.sock
-        - --seaweedfs-filer=drycc-storage-metanode-weed.$(NAMESPACE).svc.{{ $clusterDomain }}:8888
+        - csi-driver
         - --node-id=$(NODE_NAME)
-        - --driver-name={{ .Values.csi.driverName }}
+        - --endpoint=unix:///var/lib/csi/sockets/pluginproxy/csi.sock
         - --components=controller
+        - --driver-name={{ .Values.csi.driverName }}
         - --health-port=9808
+        - --mounter=seaweedfs
+        - --mounter-endpoint=drycc-storage-metanode-weed.$(NAMESPACE).svc.{{ $clusterDomain }}:8888
+        - --mounter-image={{ .Values.imageRegistry }}/{{ .Values.imageOrg }}/storage:{{ .Values.imageTag }}
+        - --mounter-image-pull-policy={{ .Values.imagePullPolicy }}
+        - --mounter-namespace=$(NAMESPACE)
+        - --mounter-service-account=drycc-storage-csi
         {{- end }}
         env:
         - name: NODE_NAME

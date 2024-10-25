@@ -12,4 +12,4 @@ deleterange_concurrency = 30
 enable_1pc = true
 EOF
 
-boot metanode weed -master="${MASTER}" -defaultStoreDir=/data -metricsPort=9326
+weed-start metanode weed -master="${MASTER}" -defaultStoreDir=/data -metricsPort=9326

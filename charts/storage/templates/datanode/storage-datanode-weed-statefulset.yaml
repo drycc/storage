@@ -47,8 +47,8 @@ spec:
         command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 10 }}
         args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 10 }}
         {{- else }}
-        command:
-        - init-stack
+        args:
+        - /usr/bin/env
         - bash
         - -ec
         - |
@@ -58,7 +58,7 @@ spec:
           KUBERNETES_API_URL="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/api/v1/nodes/${NODE_NAME}"
           RACK=$(curl -sSL --cacert ${CACERT} --header "${HEADER}" -X GET "${KUBERNETES_API_URL}" | jq -r .metadata.labels.[\"topology.kubernetes.io/rack\"])
           DATA_CENTER=$(curl -sSL --cacert ${CACERT} --header "${HEADER}" -X GET "${KUBERNETES_API_URL}" | jq -r .metadata.labels.[\"topology.kubernetes.io/zone\"])
-          boot datanode weed \
+          weed-start datanode weed \
             -port=8080 \
             -port.grpc=18080 \
             -metricsPort=9325 \

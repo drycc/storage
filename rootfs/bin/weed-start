@@ -9,18 +9,15 @@ from urllib.request import urlopen
 
 
 usage = """
-Valid commands for boot:
+Valid commands for weed-start:
 
-controls tipd            run pd-ctl
-controls csi             run csi driver
-controls tikv            run tikv-ctl
 mainnode tipd            start pd-server for tikv
 mainnode weed            start seaweedfs master
 metanode weed            start seaweedfs filer
 metanode tikv            start tikv-server
 datanode weed            start seaweedfs volume
 
-Use 'bootloader.py [command] [subcommand] --help' to learn more.
+Use 'weed-start [command] [subcommand] --help' to learn more.
 """
 
 
@@ -39,17 +36,6 @@ def getopt_value(opt, argv):
             return argv[index+1]
     except getopt.GetoptError:
         return ""
-
-
-def controls(subcommand, args):
-    if subcommand == "tipd":
-        exec("pd-ctl", args)
-    elif subcommand == "csi":
-        exec("csi", args)
-    elif subcommand == "tikv":
-        exec("tikv-ctl", args)
-    else:
-        print(usage)
 
 
 def pdhealth(endpoint, frequency):
@@ -122,7 +108,7 @@ def datanode(subcommand, args):
 if __name__ == "__main__":
     if len(sys.argv) > 3:
         command, subcommand, args = sys.argv[1], sys.argv[2], sys.argv[3:]
-        if command in ("controls", "mainnode", "metanode", "datanode"):
+        if command in ("mainnode", "metanode", "datanode"):
             eval(command)(subcommand, args)
             sys.exit()
     print(usage)
