@@ -6,7 +6,7 @@ metadata:
   annotations:
     prometheus.io/path: /metrics
     prometheus.io/port: "9325"
-    tipd.prometheus.io/scrape: "true"
+    prometheus.io/scrape: "true"
     {{- with .Values.service.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
