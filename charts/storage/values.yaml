@@ -39,7 +39,7 @@ csi:
       type: RollingUpdate
       rollingUpdate:
         maxUnavailable: 1
-    registrarImage: registry.drycc.cc/k8s/sig-storage/csi-node-driver-registrar:v2.10.0
+    registrarImage: registry.drycc.cc/k8s/sig-storage/csi-node-driver-registrar:v2.12.0
   statefulset:
     replicas: 1
     nodeAffinityPreset:
@@ -55,9 +55,9 @@ csi:
       type: "soft"
       extraMatchLabels:
         app: "drycc-storage-csi-controller"
-    resizerImage: registry.drycc.cc/k8s/sig-storage/csi-resizer:v1.11.1
-    provisionerImage: registry.drycc.cc/k8s/sig-storage/csi-provisioner:v5.0.1
-    livenessProbeImage: registry.drycc.cc/k8s/sig-storage/livenessprobe:v2.13.0
+    resizerImage: registry.drycc.cc/k8s/sig-storage/csi-resizer:v1.12.0
+    provisionerImage: registry.drycc.cc/k8s/sig-storage/csi-provisioner:v5.1.0
+    livenessProbeImage: registry.drycc.cc/k8s/sig-storage/livenessprobe:v2.14.0
   volumes:
     pluginsDir: /var/lib/kubelet/plugins
     podsMountDir: /var/lib/kubelet/pods
