@@ -9,10 +9,17 @@ import (
 	"k8s.io/mount-utils"
 )
 
-var mountutils = mount.New("")
-var Mount = mountutils.Mount
-var Unmount = mountutils.Unmount
+var mounter = mount.New("")
+var Mount = mounter.Mount
 var PathExists = mount.PathExists
+var UnmountTimeout = 30 * time.Second
+
+func Unmount(target string) error {
+	if unmounter, ok := mounter.(mount.MounterForceUnmounter); ok {
+		return unmounter.UnmountWithForce(target, UnmountTimeout)
+	}
+	return mounter.Unmount(target)
+}
 
 func WaitMount(ctx context.Context, path string) error {
 	interval := 10 * time.Millisecond
@@ -21,7 +28,7 @@ func WaitMount(ctx context.Context, path string) error {
 		case <-ctx.Done():
 			return errors.New("timeout waiting for mount")
 		default:
-			mounted, err := mountutils.IsMountPoint(path)
+			mounted, err := mounter.IsMountPoint(path)
 			if err != nil {
 				return err
 			}
@@ -34,7 +41,7 @@ func WaitMount(ctx context.Context, path string) error {
 }
 
 func CheckMount(path string) (bool, error) {
-	isMnt, err := mountutils.IsMountPoint(path)
+	isMnt, err := mounter.IsMountPoint(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if err = os.MkdirAll(path, 0750); err != nil {
@@ -42,10 +49,10 @@ func CheckMount(path string) (bool, error) {
 			}
 			isMnt = false
 		} else if mount.IsCorruptedMnt(err) {
-			if err := mountutils.Unmount(path); err != nil {
+			if err := mounter.Unmount(path); err != nil {
 				return false, err
 			}
-			isMnt, err = mountutils.IsMountPoint(path)
+			isMnt, err = mounter.IsMountPoint(path)
 		} else {
 			return false, err
 		}
