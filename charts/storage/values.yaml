@@ -71,11 +71,11 @@ mainnode:
       volume.deleteEmpty -quietFor=24h -force
       volume.balance -force
       volume.fix.replication
-      volume.fsck -reallyDeleteFromVolume
       s3.clean.uploads -timeAgo=24h
+      volume.fsck -reallyDeleteFilerEntries -reallyDeleteFromVolume -forcePurging
       unlock
     timeZone: "Etc/UTC"
-    schedule: "{{ mod (randNumeric 3) 60 }} {{ mod (randNumeric 3) 24 }} * * *"
+    schedule: "0 */2 * * *"
     concurrencyPolicy: "Replace"
     successfulJobsHistoryLimit: 1
     failedJobsHistoryLimit: 1
