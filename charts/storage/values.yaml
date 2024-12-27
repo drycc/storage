@@ -75,7 +75,7 @@ mainnode:
       volume.fsck -reallyDeleteFilerEntries -reallyDeleteFromVolume -forcePurging
       unlock
     timeZone: "Etc/UTC"
-    schedule: "0 */2 * * *"
+    schedule: "0 * * * *"
     concurrencyPolicy: "Replace"
     successfulJobsHistoryLimit: 1
     failedJobsHistoryLimit: 1
