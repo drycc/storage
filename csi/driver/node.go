@@ -18,6 +18,7 @@ package driver
 
 import (
 	"regexp"
+	"sync"
 	"syscall"
 	"time"
 
@@ -46,6 +47,7 @@ var (
 
 type NodeServer struct {
 	csi.UnimplementedNodeServer
+	lock       sync.Mutex
 	driver     *CSIDriver
 	driverInfo *DriverInfo
 }
@@ -53,65 +55,8 @@ type NodeServer struct {
 // NodeStageVolume is called by the CO prior to the volume being consumed by any workloads on the node by `NodePublishVolume`
 func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	glog.Infof("using NodeStageVolume: %#v, %#v", ctx, req)
-	volumeId := req.GetVolumeId()
-	stagingTargetPath := req.GetStagingTargetPath()
-	bucket, prefix := volumeIDToBucketPrefix(volumeId)
-
-	// Check arguments
-	if req.GetVolumeCapability() == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
-	}
-	if len(volumeId) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
-	}
-	if len(stagingTargetPath) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Staging target path missing in request")
-	}
-	glog.Infof("check stage target path: %s", stagingTargetPath)
-	mounted, err := local.CheckMount(stagingTargetPath)
-	if err != nil {
-		glog.Errorf("check stage target path error: %v", err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if mounted {
-		glog.Infof("ignore, stage target path %s already mounted.", stagingTargetPath)
-		return &csi.NodeStageVolumeResponse{}, nil
-	}
-
-	options := make([]string, 0)
-	if req.VolumeContext[optionsKey] != "" {
-		re, _ := regexp.Compile(`([^\s"]+|"([^"\\]+|\\")*")+`)
-		re2, _ := regexp.Compile(`"([^"\\]+|\\")*"`)
-		re3, _ := regexp.Compile(`\\(.)`)
-		for _, opt := range re.FindAll([]byte(req.VolumeContext[optionsKey]), -1) {
-			// Unquote options
-			opt = re2.ReplaceAllFunc(opt, func(q []byte) []byte {
-				return re3.ReplaceAll(q[1:len(q)-1], []byte("$1"))
-			})
-			options = append(options, string(opt))
-		}
-	}
-
-	nodeDriver, err := NewNodeDriver(volumeId, ns.driverInfo.MounterInfo)
-	if err != nil {
-		glog.Errorf("new node driver error: %v", err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	capacity, err := nodeDriver.K8sClient.GetVolumeSize(volumeId)
-	if err != nil {
-		glog.Infof("get volume size error: %v", err)
-	}
-	mounterBucket := &mounter.Bucket{
-		Name:     bucket,
-		Endpoint: *ns.driverInfo.MounterInfo.Endpoint,
-		Prefix:   prefix,
-		Capacity: uint64(capacity),
-		Secrets:  req.GetSecrets(),
-	}
-
-	if err := nodeDriver.Mount(mounterBucket, stagingTargetPath, options); err != nil {
-		glog.Errorf("mount stage target path error: %v", err)
-		return nil, status.Error(codes.Internal, err.Error())
+	if err := ns.mountStageVolume(req.VolumeId, req.StagingTargetPath, req.VolumeContext, req.Secrets); err != nil {
+		return nil, err
 	}
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -147,18 +92,18 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 }
 
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	volumeID := req.GetVolumeId()
+	volumeId := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
 	stagingTargetPath := req.GetStagingTargetPath()
 
-	glog.Infof("node publish volume %s to %s", volumeID, targetPath)
+	glog.Infof("node publish volume %s to %s", volumeId, targetPath)
 
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
 	}
 
-	if volumeID == "" {
+	if volumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 	if targetPath == "" {
@@ -167,7 +112,20 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if stagingTargetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "Staging target path missing in request")
 	}
-	//TODO
+	// check staging target path
+	ns.lock.Lock()
+	defer ns.lock.Unlock()
+	if mounted, err := local.CheckMount(stagingTargetPath); err != nil || !mounted {
+		glog.Errorf("volume %s staging target path %s unmounted, err: %w, mount state: %s", volumeId, stagingTargetPath, err, mounted)
+		if err := local.Unmount(stagingTargetPath); err != nil {
+			glog.Errorf("volume %s unmount err: %w", volumeId, err)
+		}
+		if err := ns.mountStageVolume(volumeId, stagingTargetPath, req.GetVolumeContext(), req.GetSecrets()); err != nil {
+			glog.Errorf("Recovery staging target path err: %w", err)
+			return nil, status.Error(codes.InvalidArgument, "Recovery staging target path err")
+		}
+	}
+
 	// check whether it can be mounted
 	if mounted, err := local.CheckMount(targetPath); err != nil {
 		return nil, err
@@ -187,7 +145,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, err
 	}
 
-	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
+	glog.Infof("volume %s successfully published to %s", volumeId, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -317,4 +275,63 @@ func (d *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVol
 			},
 		},
 	}, nil
+}
+
+func (ns *NodeServer) mountStageVolume(volumeId, stagingTargetPath string, volumeContext, secrets map[string]string) error {
+	bucket, prefix := volumeIDToBucketPrefix(volumeId)
+
+	// Check arguments
+	if len(volumeId) == 0 {
+		return status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if len(stagingTargetPath) == 0 {
+		return status.Error(codes.InvalidArgument, "Staging target path missing in request")
+	}
+	glog.Infof("check stage target path: %s", stagingTargetPath)
+	mounted, err := local.CheckMount(stagingTargetPath)
+	if err != nil {
+		glog.Errorf("check stage target path error: %v", err)
+		return status.Error(codes.Internal, err.Error())
+	}
+	if mounted {
+		glog.Infof("ignore, stage target path %s already mounted.", stagingTargetPath)
+		return nil
+	}
+
+	options := make([]string, 0)
+	if volumeContext[optionsKey] != "" {
+		re, _ := regexp.Compile(`([^\s"]+|"([^"\\]+|\\")*")+`)
+		re2, _ := regexp.Compile(`"([^"\\]+|\\")*"`)
+		re3, _ := regexp.Compile(`\\(.)`)
+		for _, opt := range re.FindAll([]byte(volumeContext[optionsKey]), -1) {
+			// Unquote options
+			opt = re2.ReplaceAllFunc(opt, func(q []byte) []byte {
+				return re3.ReplaceAll(q[1:len(q)-1], []byte("$1"))
+			})
+			options = append(options, string(opt))
+		}
+	}
+
+	nodeDriver, err := NewNodeDriver(volumeId, ns.driverInfo.MounterInfo)
+	if err != nil {
+		glog.Errorf("new node driver error: %v", err)
+		return status.Error(codes.Internal, err.Error())
+	}
+	capacity, err := nodeDriver.K8sClient.GetVolumeSize(volumeId)
+	if err != nil {
+		glog.Infof("get volume size error: %v", err)
+	}
+	mounterBucket := &mounter.Bucket{
+		Name:     bucket,
+		Endpoint: *ns.driverInfo.MounterInfo.Endpoint,
+		Prefix:   prefix,
+		Capacity: uint64(capacity),
+		Secrets:  secrets,
+	}
+
+	if err := nodeDriver.Mount(mounterBucket, stagingTargetPath, options); err != nil {
+		glog.Errorf("mount stage target path error: %v", err)
+		return status.Error(codes.Internal, err.Error())
+	}
+	return nil
 }
