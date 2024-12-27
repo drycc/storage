@@ -47,7 +47,7 @@ var (
 
 type NodeServer struct {
 	csi.UnimplementedNodeServer
-	lock       sync.Mutex
+	keyLock    sync.Map
 	driver     *CSIDriver
 	driverInfo *DriverInfo
 }
@@ -85,7 +85,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		glog.Errorf("unmount stage target path error: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
+	ns.keyLock.Delete(volumeId)
 	glog.Infof("volume %s successfully unstaged from %s", volumeId, stagingTargetPath)
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -113,8 +113,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "Staging target path missing in request")
 	}
 	// check staging target path
-	ns.lock.Lock()
-	defer ns.lock.Unlock()
+	value, _ := ns.keyLock.LoadOrStore(volumeId, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
 	if mounted, err := local.CheckMount(stagingTargetPath); err != nil || !mounted {
 		glog.Errorf("volume %s staging target path %s unmounted, err: %w, mount state: %s", volumeId, stagingTargetPath, err, mounted)
 		if err := local.Unmount(stagingTargetPath); err != nil {
