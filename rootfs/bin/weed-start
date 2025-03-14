@@ -59,7 +59,8 @@ def pdserver(args):
             advertise_client_urls = client_urls
         else:
             advertise_client_urls = "http://127.0.0.1:2379"
-    if len(os.listdir(data_dir)) == 0:
+    dirs = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+    if any(os.listdir(os.path.join(data_dir, d)) for d in dirs):
         endpoints = os.environ.get("DRYCC_STORAGE_TIPD_ENDPOINTS", "").split(",")
         join = None
         for endpoint in endpoints:
