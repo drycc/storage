@@ -1,0 +1,49 @@
+imageOrg: "drycc"
+imagePullPolicy: "Always"
+imageTag: "canary"
+imageRegistry: "registry.drycc.cc"
+
+# The following parameters are configured only when using an on-cluster Minio instance
+nodeAffinityPreset:
+  key: "drycc.cc/node"
+  type: "soft"
+  values:
+  - "true"
+podAffinityPreset:
+  type: ""
+  extraMatchLabels:
+    security: "drycc-security"
+podAntiAffinityPreset:
+  type: "soft"
+  extraMatchLabels:
+    app: "drycc-storage"
+
+# Minio zone count
+zones: 1
+# Device count of per replica
+drives: 1
+# Number of replicas per zone
+replicas: 4
+
+# Service
+service:
+  # Provide any additional service annotations
+  annotations: {}
+
+persistence:
+  enabled: false
+  size: 5Gi
+  storageClass: ""
+
+global:
+  # A domain name consists of one or more parts.
+  # Periods (.) are used to separate these parts.
+  # Each part must be 1 to 63 characters in length and can contain lowercase letters, digits, and hyphens (-).
+  # It must start and end with a lowercase letter or digit.
+  clusterDomain: "cluster.local"
+  # Set the location of Workflow's Object Storage
+  #
+  # Valid values are:
+  # - on-cluster: Run drycc storage within the Kubernetes cluster
+  # - off-cluster: Run Storage outside the Kubernetes cluster (Compatible with s3 API)
+  storageLocation: on-cluster

@@ -1,0 +1,24 @@
+{{- if eq .Values.global.storageLocation "on-cluster" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: drycc-storage
+  annotations:
+    prometheus.io/path: /minio/v2/metrics/resource
+    prometheus.io/port: "9000"
+    prometheus.io/scrape: "true"
+    {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    heritage: drycc
+spec:
+  type: ClusterIP
+  selector:
+    app: drycc-storage
+  ports:
+  - name: api
+    port: 9000
+  - name: console
+    port: 9001
+{{- end }}

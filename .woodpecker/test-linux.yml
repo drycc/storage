@@ -1,0 +1,23 @@
+matrix:
+  platform:
+  - linux/amd64
+  - linux/arm64
+
+labels:
+  type: exec
+  platform: ${platform}
+
+steps:
+- name: test-linux
+  image: bash
+  commands:
+  - make test
+  environment:
+    CODENAME:
+      from_secret: codename
+    DEV_REGISTRY:
+      from_secret: dev_registry
+  when:
+    event:
+    - push
+    - tag
