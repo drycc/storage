@@ -25,6 +25,10 @@ drives: 1
 # Number of replicas per zone
 replicas: 4
 
+# Access key and secret key for storage
+accesskey: ""
+secretkey: ""
+
 # Service
 service:
   # Provide any additional service annotations
