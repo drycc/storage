@@ -3,8 +3,8 @@ FROM registry.drycc.cc/drycc/base:bookworm
 ENV DRYCC_UID=1001 \
   DRYCC_GID=1001 \
   DRYCC_HOME_DIR=/data \
-  MC_VERSION="2025.03.12.17.29.24" \
-  MINIO_VERSION="2025.03.12.18.04.18"
+  MC_VERSION="2025.04.03.17.07.56" \
+  MINIO_VERSION="2025.04.03.14.56.28"
 
 
 RUN groupadd drycc --gid ${DRYCC_GID} \
