@@ -1,4 +1,3 @@
-{{- if eq .Values.global.storageLocation "on-cluster" }}
 {{- $zoneCount := int .Values.zones }}
 {{- $driveCount := int .Values.drives }}
 {{- $replicaCount := int .Values.replicas }}
@@ -118,4 +117,3 @@ spec:
         emptyDir: {}
       {{- end }}
   {{- end }}
-{{- end }}
