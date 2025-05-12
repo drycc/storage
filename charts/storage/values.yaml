@@ -3,6 +3,14 @@ imagePullPolicy: "Always"
 imageTag: "canary"
 imageRegistry: "registry.drycc.cc"
 
+resources: {}
+  # limits:
+  #   cpu: 200m
+  #   memory: 50Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 30Mi
+
 # The following parameters are configured only when using an on-cluster Minio instance
 nodeAffinityPreset:
   key: "drycc.cc/node"

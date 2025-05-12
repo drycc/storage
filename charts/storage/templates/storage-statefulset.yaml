@@ -52,6 +52,10 @@ spec:
         - name: console
           containerPort: 9001
           protocol: TCP
+        {{- with index .Values "resources" }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /minio/health/live
