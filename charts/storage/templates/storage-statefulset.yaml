@@ -1,5 +1,5 @@
 {{- $zoneCount := int .Values.zones }}
-{{- $driveCount := int .Values.drives }}
+{{- $driveCount := int .Values.drivesPerNode }}
 {{- $replicaCount := int .Values.replicas }}
 apiVersion: apps/v1
 kind: StatefulSet
@@ -60,9 +60,9 @@ spec:
           httpGet:
             path: /minio/health/live
             port: 9000
-          initialDelaySeconds: 90
+          initialDelaySeconds: 5
           periodSeconds: 5
-          timeoutSeconds: 1
+          timeoutSeconds: 5
           successThreshold: 1
           failureThreshold: 5
         readinessProbe:
@@ -73,6 +73,14 @@ spec:
           timeoutSeconds: 1
           successThreshold: 1
           failureThreshold: 5
+        startupProbe:
+          tcpSocket:
+            port: 9000
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 60
         args:
         - minio
         - server

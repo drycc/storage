@@ -26,12 +26,12 @@ podAntiAffinityPreset:
   extraMatchLabels:
     app: "drycc-storage"
 
+# Number of replicas per zone
+replicas: 4
 # Minio zone count
 zones: 1
 # Device count of per replica
-drives: 1
-# Number of replicas per zone
-replicas: 4
+drivesPerNode: 1
 
 # Access key and secret key for storage
 accesskey: ""
