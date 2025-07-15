@@ -89,7 +89,7 @@ spec:
         {{- $factor := mul $i $replicaCount }}
         {{- $endIndex := sub (add $factor $replicaCount) 1 }}
         {{- $beginIndex := mul $i $replicaCount }}
-        - {{(printf "http://drycc-storage-{%d...%d}.drycc-storage.%s.svc.%s:9000/data/{0...%d}" $beginIndex $endIndex $.Release.Namespace $.Values.global.clusterDomain (sub $driveCount 1) ) }}
+        - {{(printf "http://drycc-storage-{%d...%d}.drycc-storage:9000/data/{0...%d}" $beginIndex $endIndex (sub $driveCount 1) ) }}
         {{- end }}
         - --address
         - :9000
