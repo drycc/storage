@@ -25,6 +25,9 @@ podman-build:
 	podman build --build-arg CODENAME=${CODENAME} -t ${IMAGE} .
 	podman tag ${IMAGE} ${MUTABLE_IMAGE}
 
+podman-buildx:
+	podman buildx build --build-arg CODENAME=${CODENAME} --platform ${PLATFORM} -t ${IMAGE} . --push
+
 deploy: build podman-build podman-push
 
 .PHONY: all bootstrap build test podman-build deploy
