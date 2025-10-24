@@ -6,7 +6,7 @@ MINIO_ROOT_PASSWORD=f4c4281665bc11ee8e0400163e04a9cd
 
 function start-storage {
   mkdir -p "${BASE_DIR}/data"
-podman run --rm -d --name test-storage \
+  podman run --rm -d --name test-storage \
     -e MINIO_PROMETHEUS_AUTH_TYPE=public \
     -e MINIO_ROOT_USER=${MINIO_ROOT_USER} \
     -e MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD} \
@@ -30,12 +30,20 @@ function main {
   echo -e "\\033[32m---> Waitting for ${S3_IP}:9000\\033[0m"
   wait-for-port --host="${S3_IP}" 9000
   echo -e "\\033[32m---> S3 service ${S3_IP}:9000 ready...\\033[0m"
-  # test by minio client
-  mc --config-dir /tmp/.mc config host add storage "${S3_ENDPOINT}" ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} --lookup path --api s3v4
-  mc --config-dir /tmp/.mc mb storage/test
-  mc --config-dir /tmp/.mc cp "${BASE_DIR}"/test.sh storage/test
+  # test by rclone client
+  mkdir -p /tmp/.config/rclone
+  cat > /tmp/.config/rclone/rclone.conf << EOF
+[storage]
+type = s3
+provider = Other
+endpoint = ${S3_ENDPOINT}
+access_key_id = ${MINIO_ROOT_USER}
+secret_access_key = ${MINIO_ROOT_PASSWORD}
+EOF
+  rclone --config /tmp/.config/rclone/rclone.conf mkdir storage:test
+  rclone --config /tmp/.config/rclone/rclone.conf copyto "${BASE_DIR}"/test.sh storage:test/test.sh
   exit_code=$?
-  rm -rf /tmp/.mc
+  rm -rf /tmp/.config/rclone
   exit $exit_code
 }
 
