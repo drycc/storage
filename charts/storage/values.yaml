@@ -11,7 +11,7 @@ resources: {}
   #   cpu: 100m
   #   memory: 30Mi
 
-# The following parameters are configured only when using an on-cluster Minio instance
+# The following parameters are configured only when using an on-cluster object storage instance
 nodeAffinityPreset:
   key: "drycc.cc/node"
   type: "soft"
@@ -28,7 +28,7 @@ podAntiAffinityPreset:
 
 # Number of replicas per zone
 replicas: 4
-# Minio zone count
+# Object storage zone count
 zones: 1
 # Device count of per replica
 drivesPerNode: 1

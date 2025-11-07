@@ -4,12 +4,16 @@ FROM registry.drycc.cc/drycc/base:${CODENAME}
 ARG DRYCC_UID=1001 \
   DRYCC_GID=1001 \
   DRYCC_HOME_DIR=/data \
-  MINIO_VERSION="2025.09.07.16.13.09"
+  RUSTFS_VERSION="1.0.0-alpha.67" \
+  OPENTELEMETRY_COLLECTOR_VERSION=0.139.0
 
+COPY rootfs/etc/otelcol /etc/otelcol
 
 RUN groupadd drycc --gid ${DRYCC_GID} \
   && useradd drycc -u ${DRYCC_UID} -g ${DRYCC_GID} -s /bin/bash -m -d ${DRYCC_HOME_DIR} \
-  && install-stack minio $MINIO_VERSION \
+  && install-packages dnsutils \
+  && install-stack rustfs $RUSTFS_VERSION \
+  && install-stack opentelemetry-collector $OPENTELEMETRY_COLLECTOR_VERSION \
   && rm -rf \
       /usr/share/doc \
       /usr/share/man \

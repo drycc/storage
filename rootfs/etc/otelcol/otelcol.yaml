@@ -1,0 +1,35 @@
+# Simplified version: Focus on OTLP metrics collection and Prometheus export
+receivers:
+  otlp:                                      # OTLP protocol receiver
+    protocols:
+      grpc:                                  # OTLP gRPC receiver for rustfs metrics data
+        endpoint: 0.0.0.0:4317               # gRPC endpoint for receiving metrics
+processors:
+  batch:                                     # Batch processor to improve throughput
+    timeout: 5s                              # Maximum time to wait before sending a batch
+    send_batch_size: 1000                    # Maximum batch size
+  memory_limiter:                            # Memory limiter to prevent OOM
+    check_interval: 1s                       # Interval to check memory usage
+    limit_mib: 256                           # Reduce memory limit to 256MB
+exporters:
+  prometheus:                                # Prometheus exporter for Grafana scraping
+    endpoint: "0.0.0.0:9200"                 # Endpoint for Grafana to scrape metrics
+    namespace: "rustfs"                      # Metrics prefix (will prefix all metrics with "rustfs_")
+    send_timestamps: true                    # Include timestamps with metrics
+service:
+  pipelines:
+    metrics:                                 # Keep only metrics pipeline
+      receivers: [otlp]                      # Receive OTLP metrics from rustfs
+      processors: [memory_limiter, batch]    # Apply memory limiting and batching
+      exporters: [prometheus]                # Export to Prometheus for Grafana
+  telemetry:
+    logs:
+      level: "warn"                          # Reduce log level to minimize output
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus:
+              host: 0.0.0.0                  # Host for internal metrics endpoint
+              port: 8888                     # Port for internal metrics endpoint
+              without_units: true            # Export metrics without units for compatibility

@@ -1,6 +1,19 @@
 {{- $zoneCount := int .Values.zones }}
 {{- $driveCount := int .Values.drivesPerNode }}
 {{- $replicaCount := int .Values.replicas }}
+{{- $volumesList := list }}
+{{- $hostsList := list }}
+{{- range $i := until $zoneCount }}
+{{- $factor := mul $i $replicaCount }}
+{{- $endIndex := sub (add $factor $replicaCount) 1 }}
+{{- $beginIndex := mul $i $replicaCount }}
+{{- $volumes := (printf "http://drycc-storage-{%d...%d}.drycc-storage:9000/data/{0...%d}" $beginIndex $endIndex (sub $driveCount 1) ) }}
+{{- $volumesList = append $volumesList $volumes }}
+{{- range $j := until $replicaCount }}
+{{- $nodeIndex := add $factor $j }}
+{{- $hostsList = append $hostsList (printf "drycc-storage-%d.drycc-storage" $nodeIndex) }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -20,6 +33,10 @@ spec:
       app: drycc-storage
   template:
     metadata:
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8888"
+        prometheus.io/scrape: "true"
       labels:
         app: drycc-storage
     spec:
@@ -28,19 +45,42 @@ spec:
         podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAntiAffinityPreset.type "component" "" "extraMatchLabels" .Values.podAntiAffinityPreset.extraMatchLabels "topologyKey" "" "context" $) | nindent 10 }}
         nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.nodeAffinityPreset.type "key" .Values.nodeAffinityPreset.key "values" .Values.nodeAffinityPreset.values ) | nindent 10 }}
       serviceAccount: drycc-storage
+      initContainers:
+      - name: dns-check
+        image: {{.Values.imageRegistry}}/{{.Values.imageOrg}}/storage:{{.Values.imageTag}}
+        imagePullPolicy: {{.Values.imagePullPolicy}}
+        command:
+        - /usr/bin/env
+        - bash
+        - -ec
+        - |
+          echo "Checking DNS resolution for storage hosts..."
+          # Check all hosts in hostsList
+          hosts=({{- range $host := $hostsList }} "{{$host}}"{{- end }})
+          for host in "${hosts[@]}"; do
+            echo "Checking DNS resolution for $host..."
+            while true; do
+              if nslookup "$host" > /dev/null 2>&1; then
+                echo "DNS resolution for $host: OK"
+                break
+              else
+                echo "DNS resolution for $host failed, retrying in 5 seconds..."
+                sleep 5
+              fi
+            done
+          done
+          echo "All DNS checks passed, ready to start storage containers."
       containers:
       - name: drycc-storage
         image: {{.Values.imageRegistry}}/{{.Values.imageOrg}}/storage:{{.Values.imageTag}}
         imagePullPolicy: {{.Values.imagePullPolicy}}
         env:
-        - name: MINIO_PROMETHEUS_AUTH_TYPE
-          value: "public"
-        - name: "MINIO_ROOT_USER"
+        - name: "RUSTFS_ACCESS_KEY"
           valueFrom:
             secretKeyRef:
               name: storage-creds
               key: accesskey
-        - name: "MINIO_ROOT_PASSWORD"
+        - name: "RUSTFS_SECRET_KEY"
           valueFrom:
             secretKeyRef:
               name: storage-creds
@@ -58,7 +98,7 @@ spec:
         {{- end }}
         livenessProbe:
           httpGet:
-            path: /minio/health/live
+            path: /health
             port: 9000
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -76,30 +116,67 @@ spec:
         startupProbe:
           tcpSocket:
             port: 9000
-          initialDelaySeconds: 0
+          initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
           successThreshold: 1
           failureThreshold: 60
         args:
-        - minio
-        - server
-        {{- $clusters := list }}
-        {{- range $i := until $zoneCount }}
-        {{- $factor := mul $i $replicaCount }}
-        {{- $endIndex := sub (add $factor $replicaCount) 1 }}
-        {{- $beginIndex := mul $i $replicaCount }}
-        - {{(printf "http://drycc-storage-{%d...%d}.drycc-storage:9000/data/{0...%d}" $beginIndex $endIndex (sub $driveCount 1) ) }}
-        {{- end }}
-        - --address
-        - :9000
-        - --console-address
-        - :9001
+        - rustfs
+        - {{ join " " $volumesList }}
+        - --address=:9000
+        - --console-address=:9001
+        - --obs-endpoint=http://localhost:4317
         volumeMounts:
         {{- range $diskId := until $driveCount }}
         - name: storage-data-{{$diskId}}
           mountPath: /data/{{$diskId}}
         {{- end }}
+      - name: drycc-storage-otelcol
+        image: {{.Values.imageRegistry}}/{{.Values.imageOrg}}/storage:{{.Values.imageTag}}
+        imagePullPolicy: {{.Values.imagePullPolicy}}
+        ports:
+        - name: receiver
+          containerPort: 4317
+          protocol: TCP
+        - name: otelcol
+          containerPort: 9200
+          protocol: TCP
+        - name: metrics
+          containerPort: 8888
+          protocol: TCP
+        {{- with index .Values "resources" }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9200
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        readinessProbe:
+          tcpSocket:
+            port: 9200
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 1
+          successThreshold: 1
+          failureThreshold: 5
+        startupProbe:
+          tcpSocket:
+            port: 9200
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 60
+        args:
+        - otelcol
+        - --config=/etc/otelcol/otelcol.yaml
       securityContext:
         fsGroup: 1001
         runAsGroup: 1001

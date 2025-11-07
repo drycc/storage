@@ -10,7 +10,7 @@ We welcome your input! If you have feedback, please submit an [issue][issues]. I
 
 # About
 
-The Drycc storage component provides an [S3 API][s3-api] compatible object storage server, based on [MINIO](https://github.com/minio/minio), that can be run on Kubernetes. It's intended for use within the [Drycc v2 platform][drycc-docs] as an object storage server, but it's flexible enough to be run as a standalone pod on any Kubernetes cluster.
+The Drycc storage component provides an [S3 API][s3-api] compatible object storage server, based on [RUSTFS](https://github.com/rustfs/rustfs), that can be run on Kubernetes. It's intended for use within the [Drycc v2 platform][drycc-docs] as an object storage server, but it's flexible enough to be run as a standalone pod on any Kubernetes cluster.
 
 Note that in the default [Helm chart for the Drycc platform](https://github.com/drycc/charts/tree/main/drycc-dev), this component is used as a storage location for the following components:
 

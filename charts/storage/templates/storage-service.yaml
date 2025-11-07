@@ -3,10 +3,9 @@ kind: Service
 metadata:
   name: drycc-storage
   annotations:
-    prometheus.io/path: /minio/v2/metrics/cluster
-    prometheus.io/port: "9000"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "9200"
     prometheus.io/scrape: "true"
-    prometheus.io/direct: "true"
     {{- with .Values.service.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -23,3 +22,5 @@ spec:
     port: 9000
   - name: console
     port: 9001
+  - name: metrics
+    port: 9200
