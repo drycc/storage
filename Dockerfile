@@ -4,7 +4,7 @@ FROM registry.drycc.cc/drycc/base:${CODENAME}
 ARG DRYCC_UID=1001 \
   DRYCC_GID=1001 \
   DRYCC_HOME_DIR=/data \
-  RUSTFS_VERSION="1.0.0-alpha.67" \
+  RUSTFS_VERSION="1.0.0-alpha.69" \
   OPENTELEMETRY_COLLECTOR_VERSION=0.139.0
 
 COPY rootfs/etc/otelcol /etc/otelcol
